@@ -1,0 +1,3 @@
+geth: bin/geth.sh
+solc: bin/solc-loop.sh
+deploy: bin/deploy-loop.sh
