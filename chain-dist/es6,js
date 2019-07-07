@@ -1,0 +1,329 @@
+/*
+* Global dependencies:
+*       Web3
+*       console.debug
+*       BigNumber
+*       BN
+*       toBN
+* */
+function dbg(...args) {
+    console.debug('chain-dsl', ...args)
+}
+
+export function now() {
+    return Math.floor(Date.now() / 1000);
+}
+
+export async function sleep(ms) {
+    return new Promise(done => setTimeout(done, ms))
+}
+
+export const ZERO_ADDR = '0x0000000000000000000000000000000000000000' //padLeft(0x0, 40)
+export const ANY = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' //toTwosComplement(-1) // for ds-guard
+
+/* It's called `address` to mimic Solidity's behaviour, eg:
+ *   SomeContract c = new SomeContract(1, 2, 3);
+ *   Log(address(c)); */
+export function address(contract) {
+    return contract.options.address
+}
+
+// `D` stands for Decimal, just like in Python
+export function D(value, ...params) {
+    if (value instanceof Array) {
+        // it was called as D`1.23` probably
+        return BigNumber(value[0])
+    }
+    if (typeof value === 'number') {
+        throw new Error(`The Number "${value}" can't be accurately represented as a decimal. Provide it as a String.`)
+    }
+    return BigNumber(value)
+}
+
+export function D2wad(aDecimal) {
+    return toBN(D(aDecimal).times(D('1e18')).integerValue())
+}
+
+export function wad2D(aBN) {
+    if (aBN instanceof BigNumber)
+        throw new Error(`"${aBN}" must be an instance of BN`)
+    return D(aBN).div(D('1e18'))
+}
+
+export function ceil(number, precision){
+  return round(number, precision, "up")
+}
+
+export function floor(number, precision){
+  return round(number, precision, "down")
+}
+
+function round(number, precision, direction){
+
+  if ( D(number).lt(0) ) {
+    throw new Error("only supports nonnegative numbers")
+  }
+
+  const rounded = D(number).toFixed(precision)
+
+  if (D(rounded).eq(number)) {
+    return rounded
+  }
+
+  if ( direction === "up" ) {
+    return D(number).plus(`5e-${precision + 1}`).toFixed(precision)
+  } else if ( direction === "down" ) {
+    const num = D(number).minus(`5e-${precision + 1}`)
+    // avoid prepending a minus sign
+    return BigNumber.max(0, num).toFixed(precision)
+  } else {
+    throw new Error(`Can only round 'up' or 'down', got ${direction}.`)
+  }
+}
+
+export function sigCoords(hexSig) {
+    const sigStr = hexSig.substr(2)
+    const v = parseInt(sigStr.substr(2 * 2 * 32, 2), 16)
+    // Metamask might return 0/1 instead of 27/28,
+    // so we should be mapped as follows:
+    //   0  -> 27
+    //   1  -> 28
+    //   27 -> 27
+    //   28 -> 28
+    return {
+        v: v < 27 ? v + 27 : v,
+        r: "0x" + sigStr.substr(0, 32 * 2),
+        s: "0x" + sigStr.substr(32 * 2, 32 * 2)
+    }
+}
+
+export function distillEvent({event, returnValues}) {
+    const essence = Object.assign({}, returnValues)
+    essence.NAME = event
+    // Clean up positional arguments for easier debugging
+    delete essence[0]
+    delete essence[1]
+    delete essence[2]
+    delete essence[3]
+    return essence
+}
+
+function arrayWrap(x) {
+    return Array.isArray(x) ? x : [x]
+}
+
+// Extract event essences from method transaction logs
+export async function txEvents(tx) {
+    const eventArrayList = Object.values((await tx).events).map(arrayWrap)
+    return [].concat(...eventArrayList).map(distillEvent)
+}
+
+export async function waitForConnection(web3) {
+    let connected = false
+    while (!connected) {
+        try {
+            connected = await web3.eth.net.isListening()
+            dbg('Connected to network:', await web3.eth.net.getId())
+        }
+        catch (e) {
+            if (e.message === 'Invalid JSON RPC response: ""') {
+                dbg('Waiting for connection...')
+                await sleep(300)
+            } else {
+                throw e
+            }
+        }
+    }
+}
+
+export async function unlockAccount(web3, acc, pwd = '') {
+    dbg("Unlocking account " + acc)
+    await web3.eth.personal.unlockAccount(acc, pwd)
+}
+
+export async function createUnlockedAccount(web3) {
+    const acc = await web3.eth.personal.newAccount()
+    await unlockAccount(web3, acc)
+    return acc
+}
+
+// `.call()` and `.send()` returns `PromiEvent`s,
+// which are not handled correctly by `await`,
+// so we wrap them into regular Promise objects.
+
+export async function send(contract, sender, methodName, ...params) {
+    dbg('send  ', sender, methodName, ...params)
+    const method = contract.methods[methodName]
+    if (method instanceof Function) {
+        return new Promise((resolve, reject) => {
+            method(...params).send({from: sender})
+                .on('error', e => reject(e))
+                .on("receipt", receipt => {
+                    if (parseInt(receipt.status) !== 1)
+                        reject(Error(JSON.stringify(receipt, null, 4)))
+                })
+                .then(resolve)
+                .catch(reject)
+        })
+    } else {
+        throw new Error(`${contract.options.name}.${methodName} is undefined`)
+    }
+}
+
+
+export async function sendNoReceipt(contract, sender, methodName, ...params) {
+    dbg('sendNoReceipt  ', sender, methodName, ...params)
+    const method = contract.methods[methodName]
+    if (method instanceof Function) {
+        return new Promise((resolve, reject) => {
+            method(...params).send({from: sender})
+                .on('error', reject)
+                .on("transactionHash", resolve)
+        })
+    } else {
+        throw Error(`${contract.options.name}.${methodName} is undefined`)
+    }
+}
+
+
+export async function waitForReceipt(web3, txhash) {
+    await sleep(5)
+    while (true) {
+        const receipt = await web3.eth.getTransactionReceipt(txhash)
+        if (receipt !== null) {
+            if (parseInt(receipt.status) !== 1) {
+                throw Error(JSON.stringify(receipt, null, 4))
+            }
+            return receipt
+        }
+        await sleep(1000)
+    }
+}
+
+
+export async function callAs(contract, sender, methodName, ...params) {
+    const method = contract.methods[methodName]
+    if (method instanceof Function) {
+        return new Promise((resolve, reject) => {
+            return method(...params)
+                .call(sender ? {from: sender} : {})
+                .then(resolve)
+                .catch(reject)
+        })
+    } else {
+        throw new Error(`${contract.options.name}.${methodName} is undefined`)
+    }
+}
+
+
+export function decodeLogs(contract, receipt) {
+    const events = receipt.logs.map(log =>
+        contract._decodeEventABI.call({
+            name: 'ALLEVENTS',
+            jsonInterface: contract.options.jsonInterface
+        }, log)
+    )
+    // Mimick web3 "contract.send" behavior by creating an event map with name as key
+    receipt.events = events.reduce( (p,e) => {
+        if (e.event) {
+            // Create a new key for each named event; becomes array if >1
+            p[e.event] = e.event in p ? Array.prototype.concat(p[e.event], e) : e
+        }
+        return p
+    }, {})
+    return events
+}
+
+
+export async function call(contract, ...args) {
+    return callAs(contract, undefined, ...args)
+}
+
+export async function create(web3, DEPLOYER, Contract, ...args) {
+    dbg(`create`, DEPLOYER, Contract.contractType, ...args)
+    const contractDefaultOptions = {
+        from: DEPLOYER,
+        gas: 4 * 1000 * 1000, // suitable for both `geth --dev` and `ganache-core`
+        name: Contract.contractType
+    }
+
+    if (Contract.evm.bytecode.object === '') {
+        throw new Error(`Constructor missing from ${Contract.contractType}; can't deploy.`)
+    }
+
+    return new Promise((resolve, reject) => {
+        return new web3.eth.Contract(Contract.abi, contractDefaultOptions)
+            .deploy({data: "0x" + Contract.evm.bytecode.object, arguments: args})
+            .send()
+            .then(resolve)
+            .catch(reject)
+    })
+}
+
+/* `Contract` is a value at `contracts["src/Foo.sol:Foo"]`
+ * in the output of `solc --combined-json=abi,bin`, eg:
+{
+  "contracts": {
+    "src/Foo.sol:Foo": {
+      "abi": "[{\"constant\":true,\"inputs\":[],\"name\":\"bar\",\"outputs\":[{\"name\":\"x\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"}]",
+      "bin": "6060604052..."
+    }
+  },
+  "version": "0.4.20+commit.3155dd80.Darwin.clang"
+}
+*/
+export async function legacyCreate(web3, DEPLOYER, Contract, ...args) {
+    const deployOpts = {from: DEPLOYER, gas: 6e6}
+    const {abi, bin} = Contract
+    return new Promise((resolve, reject) => {
+        return new web3.eth.Contract(JSON.parse(abi), deployOpts)
+            .send()
+            .then(resolve)
+            .catch(reject)
+    })
+}
+
+export function web3Contract(web3, savedContract, opts = {}) {
+    const {name, from, address, jsonInterface} = savedContract
+    return new web3.eth.Contract(jsonInterface, address, {
+        gas: 4e6,
+        // gasPrice: web3.utils.toWei('1', 'gwei'),
+        ...opts,
+        name,
+        from
+    })
+}
+
+export async function balance(web3_or_eip20, account) {
+    const eip20 = web3_or_eip20.methods
+    const eth = web3_or_eip20.eth
+    if (eip20) {
+        return toBN(await callAs(web3_or_eip20, null, 'balanceOf', account))
+    } else if (eth) {
+        return toBN(await eth.getBalance(account))
+    } else {
+        throw new Error('Expected a web3 client or an EIP20 web3 contract instead of', web3_or_eip20)
+    }
+}
+
+// TODO Support EIP20 contracts
+export async function transfer(web3, src, dst, amt) {
+    return new Promise((resolve, reject) => {
+        dbg(`transfer ${amt} wei from ${src} to ${dst}`)
+        web3.eth.sendTransaction({from: src, to: dst, value: amt})
+            .then(resolve)
+            .catch(reject)
+    })
+}
+
+export async function approve(token, tokenOwner, spender, amount) {
+    return send(token, tokenOwner, 'approve', spender, amount)
+}
+
+export async function allowance (eip20, owner, spender) {
+  if ('methods' in eip20) {
+    return toBN(await callAs(eip20, null, 'allowance', owner, spender))
+  } else {
+    throw new Error('Expected an EIP20 web3 contract instead of', eip20)
+  }
+}
