@@ -1,0 +1,14 @@
+playground.js
+out/
+net/8/*
+net/1337/*
+dev-chain/
+dev2-chain/
+test/deployed-to-*.js
+# DEPLOYER
+!keystore/UTC--*--d124b979f746be85706daa1180227e716eafcc5c
+# ALICE the WETH owner
+!keystore/UTC--*--a49aad37c34e92236690b93e291ae5f10daf7cbe
+# BOB the OAX owner
+!keystore/UTC--*--b357fc3dbd4cdb7cbd96aa0a0bd905dbe56cab77
+keystore/*
