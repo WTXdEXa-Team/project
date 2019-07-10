@@ -1,0 +1,23 @@
+{
+    "extends": "standard",
+    "globals": {
+        "BigNumber": true,
+        "BN": true,
+        "D": true,
+        "echarts": true,
+        "R": true,
+        "Rx": true,
+        "toBN": true,
+        "Vue": true,
+        "Vuex": true,
+        "VueRouter": true,
+        "Web3": true,
+        "clone": true,
+        "merge": true,
+        "start": true,
+        "stop": true,
+        "devChainUrl": true,
+        "devChainWsUrl": true,
+        "anotherDevChainUrl": true
+    }
+}
