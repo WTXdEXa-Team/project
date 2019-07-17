@@ -1,0 +1,135 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+class Example {
+  attribute1
+  attribute2
+  ...
+  --
+  computed1
+  computed2
+  ...
+}
+
+class TradeIntent {
+  address
+  buy.amount
+  buy.token
+  sell.amount
+  sell.token
+}
+note left: expresses\ndesire to\nswap\ntokens
+
+class Trade {
+  intent
+  fills
+  orders
+}
+note left: create N fills\ncreate orders with rest\n(currently max 1 order)
+
+Trade -- Fill
+Trade -- Order
+Trade -- TradeIntent
+Order -- Event
+Fill -- Event
+FillIntent -- Fill
+Cancel -- Event
+Cancel -- Order
+CancelIntent -- Cancel
+
+class FillIntent {
+ order
+ address
+ buyAmt (? seems redundant)
+ sellAmt (fillTakerTokenAmount)
+ --
+}
+note left: created by Taker \nto fill existing order
+
+class Fill {
+  fillIntent
+  transactionHash
+  events
+  --
+  status
+  filled
+}
+
+class CancelIntent {
+ order
+ cancelAmt (cancelTakerTokenAmount)
+ --
+}
+note left: created by Maker \nto cancel existing order
+
+class Cancel {
+  cancelIntent
+  transactionHash
+  --
+}
+
+
+class Order {
+  address
+  buy.amount
+  buy.token (takerToken)
+  sell.amount
+  sell.token (makerToken)
+  cancels
+  events
+  --
+  status
+  filled
+}
+note right: created by Maker\nto broadcast
+
+class Event {
+  eventType
+  filledTakerTokenAmount
+  filledMakerTokenAmount
+  ...
+}
+package "UI (computed properties depend on chosen token pair)" {
+  class Blotter {
+    records
+
+  }
+  class BlotterRecord {
+    data
+    type: fill / order
+    recordHash
+    --
+    filled
+    price
+    amount
+  }
+  Blotter -- BlotterRecord
+
+  class Orderbook {
+    records
+  }
+
+  class OrderbookRecord {
+    order
+    --
+    price
+    amount
+  }
+  Orderbook -- OrderbookRecord
+
+  class TradeHistory {
+    records
+  }
+  class TradeHistoryRecord {
+    event
+    --
+    price
+    amount
+  }
+  TradeHistory -- TradeHistoryRecord
+}
+
+'BlotterRecord -- Fill
+'BlotterRecord -- Order
+
+@enduml
