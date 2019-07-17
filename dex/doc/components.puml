@@ -1,0 +1,70 @@
+' Proposed
+
+@startuml
+skinparam componentStyle uml2
+
+''''''''''''''''''''''''''''''''''''''''
+' Order interface
+''''''''''''''''''''''''''''''''''''''''
+interface "Get Orders" as getOrders
+interface "Place Order" as placeOrder
+interface "Cancel Order" as cancelOrder
+interface "ActiveOrders" as orderManager__myActiveOrders
+
+''''''''''''''''''''''''''''''''''''''''
+' Messaging interface
+''''''''''''''''''''''''''''''''''''''''
+interface "Request active orders" as topicSubscription
+interface "Broadcast Order" as postMessage
+interface "Message notification" as notifyMessage
+
+''''''''''''''''''''''''''''''''''''''''
+' Contract Events interface
+''''''''''''''''''''''''''''''''''''''''
+interface "ContractEvents" as contractEventSubscription
+
+''''''''''''''''''''''''''''''''''''''''
+' Orderbook interface
+''''''''''''''''''''''''''''''''''''''''
+interface "Add Order" as orderbook__addOrder
+
+''''''''''''''''''''''''''''''''''''''''
+' Blotter interface
+''''''''''''''''''''''''''''''''''''''''
+interface "ActiveOrders" as blotter__activeOrders
+
+''''''''''''''''''''''''''''''''''''''''
+' Components
+''''''''''''''''''''''''''''''''''''''''
+component [Order Manager] as OrderManager
+    getOrders -down- [OrderManager]
+    placeOrder -down- [OrderManager]
+    cancelOrder -down- [OrderManager]
+    orderManager__myActiveOrders -down- [OrderManager]
+
+    [OrderManager] ..> topicSubscription
+    [OrderManager] ..> postMessage
+    [OrderManager] ..> notifyMessage
+    [OrderManager] .right.> contractEventSubscription
+    [OrderManager] ..> orderbook__addOrder : Add incoming orders
+    [OrderManager] ..> blotter__activeOrders
+
+component [Order Broker] as Transport
+    postMessage -- [Transport]
+    topicSubscription -- [Transport]
+    notifyMessage -- [Transport]
+
+    [Transport] ..> orderManager__myActiveOrders
+
+component [Contract Watcher] as ContractWatcher
+    contractEventSubscription - [ContractWatcher]
+
+component [UI] as UI
+
+component [Blotter] as Blotter
+    blotter__activeOrders - [Blotter]
+
+component [Orderbook] as Orderbook
+    orderbook__addOrder - [Orderbook]
+
+@enduml
