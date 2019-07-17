@@ -1,0 +1,29 @@
+@startuml
+
+title DEX Order states
+
+(*) --> [Customer submits order] active
+active --> [User cancels order] pendingCancellation
+active --> [Expiry time reached] expired
+active --> [fillOrder] partiallyFilled
+active --> [fillOrder] fulfilled
+
+partiallyFilled --> [fillOrder] fulfilled
+partiallyFilled --> [Expiry time reached] expired
+partiallyFilled --> [User cancels order] pendingCancellation
+
+' pendingConfirmation --> [Tx succeeded] partiallyFilled
+' pendingConfirmation --> [Tx succeeded] filled
+' pendingConfirmation --> [Tx failed] error
+
+pendingCancellation --> [Tx succeeded] cancelled
+pendingCancellation --> [Tx failed] active
+pendingCancellation --> [Expiry time reached] expired
+
+
+' error --> [*] : archive
+fulfilled --> [archive] (*)
+expired --> [archive] (*)
+cancelled --> [archive] (*)
+
+@enduml
